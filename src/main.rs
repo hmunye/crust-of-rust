@@ -1,3 +1,6 @@
+mod variance;
+
 fn main() {
-    println!("Hello, world!");
+    variance::will_compile();
+    variance::wont_compile();
 }
