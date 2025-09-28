@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 mod lifetimes;
+mod macros;
 mod variance;
 
 fn main() {}
