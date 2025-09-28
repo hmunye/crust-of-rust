@@ -69,7 +69,7 @@ pub fn wont_compile() {
     // code, it *looks like* the borrow should be over, but due to lifetime
     // unification and invariance, the mutable borrow of `s` "leaks" into the
     // surrounding region of code, in this case `'static`.
-    *InvalidMutStr { s: &mut x }.s = "world";
+    // *InvalidMutStr { s: &mut x }.s = "world";
 
     // At this point, the compiler attempts to shorten the lifetime of the
     // mutable borrow of `s` so that it ends before `x` is used again, but fails
