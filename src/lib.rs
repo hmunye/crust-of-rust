@@ -5,4 +5,5 @@
 pub mod cell;
 pub mod lifetimes;
 pub mod macros;
+pub mod refcell;
 pub mod variance;

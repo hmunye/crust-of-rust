@@ -81,4 +81,52 @@ mod tests {
         x.set(89);
         assert_eq!(x.get(), 89);
     }
+
+    #[test]
+    fn test_cell_multiple_sets() {
+        let x = Cell::new(0);
+        for i in 1..10 {
+            x.set(i);
+            assert_eq!(x.get(), i);
+        }
+    }
+
+    #[test]
+    fn test_cell_copy_type() {
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        struct Small(u8);
+
+        let c = Cell::new(Small(7));
+        assert_eq!(c.get(), Small(7));
+
+        c.set(Small(99));
+        assert_eq!(c.get(), Small(99));
+    }
+
+    #[test]
+    fn test_cell_independent_instances() {
+        let a = Cell::new(1);
+        let b = Cell::new(2);
+
+        assert_eq!(a.get(), 1);
+        assert_eq!(b.get(), 2);
+
+        a.set(10);
+        b.set(20);
+
+        assert_eq!(a.get(), 10);
+        assert_eq!(b.get(), 20);
+    }
+
+    #[test]
+    fn test_cell_replaces_previous_value() {
+        let c = Cell::new(5);
+        assert_eq!(c.get(), 5);
+
+        c.set(999);
+        assert_eq!(c.get(), 999);
+
+        c.set(-3);
+        assert_eq!(c.get(), -3);
+    }
 }
