@@ -14,12 +14,12 @@
 //! - `Invariant`: No subtyping is allowed for the given type (e.g, `&'a mut T`)
 //! - `Contravariant`: A less useful type can be used in place of the type
 //!
-//! ```no_run
+//! ```no_compile
 //! let x: &'static str; // more useful, lives longer
-//! let x: &'a str;      // less useful, lives shorter
+//! let x: &'_ str;      // less useful, lives shorter
 //!
-//! fn take_func1(&'static str) // stricter, less useful
-//! fn take_func2(&'a str)      // relaxed, more useful
+//! fn take_func1(_: &'static str) {} // stricter, less useful
+//! fn take_func2<'a>(_: &'a str) {}      // relaxed, more useful
 //! ```
 
 struct ValidMutStr<'a, 'b> {

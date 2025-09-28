@@ -52,6 +52,8 @@ macro_rules! count {
     // array literal. Each `$elem` is replaced with the zero-sized type `()`.
     // The count is obtained by taking the length of this array using `len`,
     // which the compiler can evaluate at compile-time.
+    //
+    // https://lukaswirth.dev/tlborm/decl-macros/building-blocks/counting.html
     (@COUNT, $($elem:expr)+) => {
         <[()]>::len(&[$($crate::count!(@SUB, $elem ())),+])
     };
