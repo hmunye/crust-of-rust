@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod cell;
+pub mod channels;
 pub mod lifetimes;
 pub mod macros;
 pub mod rc;
