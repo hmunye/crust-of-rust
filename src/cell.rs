@@ -3,14 +3,13 @@ use std::cell::UnsafeCell;
 /// `Cell` allows for interior mutability through a shared reference because no
 /// other threads can have a reference to the same Cell and no reference to the
 /// inner `T` is ever exposed.
+#[derive(Debug)]
 pub struct Cell<T> {
     value: UnsafeCell<T>,
 }
 
 // Implied by `UnsafeCell`, which is already `!Sync`.
 // impl<T> !Sync for Cell<T> {}
-
-unsafe impl<T> Sync for Cell<T> {}
 
 impl<T> Cell<T> {
     pub fn new(value: T) -> Self {
@@ -41,33 +40,15 @@ where
 }
 
 /// ```compile_fail
-/// use std::sync::Arc;
-/// use crate::cell::Cell;
+/// use crust_of_rust::cell::Cell;
 ///
-/// let x = Arc::new(Cell::new(0));
+/// fn require_sync<T: Sync>(_: T) {}
 ///
-/// let x1 = Arc::clone(&x);
-/// let h1 = std::thread::spawn(move || {
-///     for _ in 0..1000000 {
-///         let x = x1.get();
-///         x1.set(x + 1);
-///     }
-/// });
-///
-/// let x2 = Arc::clone(&x);
-/// let h2 = std::thread::spawn(move || {
-///     for _ in 0..1000000 {
-///         let x = x2.get();
-///         x2.set(x + 1);
-///     }
-/// });
-///
-/// h1.join().unwrap();
-/// h2.join().unwrap();
-///
-/// assert_eq!(x.get(), 2000000);
+/// fn main() {
+///     require_sync(&Cell::new(42));
+/// }
 /// ```
-fn assert_non_sync() {}
+fn assert_not_sync() {}
 
 #[cfg(test)]
 mod tests {
