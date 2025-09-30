@@ -22,15 +22,11 @@
 //! fn take_func2<'a>(_: &'a str) {}      // relaxed, more useful
 //! ```
 
-struct ValidMutStr<'a, 'b> {
-    s: &'a mut &'b str,
-}
-
-struct InvalidMutStr<'a> {
-    s: &'a mut &'a str,
-}
-
 pub fn will_compile() {
+    struct ValidMutStr<'a, 'b> {
+        s: &'a mut &'b str,
+    }
+
     let mut x = "hello"; // &'static str
 
     // Creates a temporary struct with a mutable borrow of `x`.
@@ -41,7 +37,9 @@ pub fn will_compile() {
     //
     // This means the mutable borrow of `x` only needs to live for this
     // statement, so it doesn't "leak" into the surrounding region of code
-    // defined by the lifetime of `x`.
+    // defined by the lifetime of `x`. Leak here is used loosely to indicate the
+    // mutable borrow does not last longer to the compiler than how it appears
+    // in the source code. It can successfully be shortened.
     *ValidMutStr { s: &mut x }.s = "world";
 
     // At this point, the compiler attempts to shorten the lifetime of the
@@ -53,6 +51,10 @@ pub fn will_compile() {
 }
 
 pub fn wont_compile() {
+    struct InvalidMutStr<'a> {
+        s: &'a mut &'a str,
+    }
+
     let mut x = "hello"; // &'static str
 
     // Creates a temporary struct with a mutable borrow of `x`.
@@ -68,8 +70,15 @@ pub fn wont_compile() {
     // the compiler still considers `x` to be mutably borrowed. From the source
     // code, it *looks like* the borrow should be over, but due to lifetime
     // unification and invariance, the mutable borrow of `s` "leaks" into the
-    // surrounding region of code, in this case `'static`.
-    // *InvalidMutStr { s: &mut x }.s = "world";
+    // surrounding region of code, in this case `'static`. Leak here is used
+    // loosely to indicate the mutable borrow lasts longer to the compiler than
+    // how it appears in the source code.
+
+    /*
+     *
+     * *InvalidMutStr { s: &mut x }.s = "world";
+     *
+     * */
 
     // At this point, the compiler attempts to shorten the lifetime of the
     // mutable borrow of `s` so that it ends before `x` is used again, but fails
@@ -79,4 +88,36 @@ pub fn wont_compile() {
     // Error: cannot borrow `x` as immutable because it is also borrowed as
     // mutable
     println!("{x}")
+}
+
+// Two distinct generic lifetimes are needed here so the mutable borrow's
+// lifetime is not tied to the lifetime of `s`. With this approach, the mutable
+// borrow can be shortened instead of lasting as long as `s`.
+//
+// The mutable reference's lifetime is elided, and the compiler will
+// automatically give it a distinct lifetime when analyzing.
+pub fn strtok<'a>(s: &'_ mut &'a str, delim: char) -> &'a str {
+    if let Some(i) = s.find(delim) {
+        let prefix = &s[..i];
+        let suffix = &s[i + delim.len_utf8()..];
+        *s = suffix;
+        prefix
+    } else {
+        let prefix = *s;
+        *s = "";
+        prefix
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strtok;
+
+    #[test]
+    fn test_strtok_valid() {
+        let mut x = "hello world";
+        let hello = strtok(&mut x, ' ');
+        assert_eq!(hello, "hello");
+        assert_eq!(x, "world");
+    }
 }
