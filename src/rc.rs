@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 
 use crate::cell::Cell;
 
-/// Single-threaded, reference-counted smart pointer for multiple shared
+/// Single-threaded, reference-counted smart pointer allowing multiple shared
 /// references to a value.
 #[derive(Debug)]
 pub struct Rc<T> {
@@ -12,8 +12,8 @@ pub struct Rc<T> {
     // regions of code.
     inner: NonNull<RcInner<T>>,
     // Need to indicate to the compiler that we logically own `T`, since there
-    // is only a pointer to `T`, which is non-owning. Enforces drop checking,
-    // variance, and lifetimes accordingly.
+    // is only a pointer to `T`, which is non-owning. Indicates to `dropck` that
+    // `Rc<T>` with drop a `T` when dropping.
     _marker: PhantomData<RcInner<T>>,
 }
 
@@ -34,6 +34,7 @@ pub struct Rc<T> {
 #[derive(Debug)]
 struct RcInner<T> {
     value: T,
+    // So it can be updated through a shared reference.
     ref_count: Cell<usize>,
 }
 
@@ -62,7 +63,7 @@ impl<T> Clone for Rc<T> {
             (*self.inner.as_ptr()).ref_count.set(count + 1);
         }
 
-        // `NonNull` implements Copy since it wraps a raw pointer.
+        // `NonNull` implements `Copy` since it just wraps a raw pointer.
         Self {
             inner: self.inner,
             _marker: PhantomData,
@@ -102,9 +103,7 @@ impl<T> Drop for Rc<T> {
 ///
 /// fn require_sync<T: Sync>(_: T) {}
 ///
-/// fn main() {
-///     require_sync(Rc::new(42));
-/// }
+/// require_sync(Rc::new(42));
 /// ```
 fn assert_non_sync() {}
 
@@ -113,9 +112,7 @@ fn assert_non_sync() {}
 ///
 /// fn require_send<T: Send>(_: T) {}
 ///
-/// fn main() {
-///     require_send(Rc::new(42));
-/// }
+/// require_send(Rc::new(42));
 /// ```
 fn assert_non_send() {}
 
@@ -135,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    // MIRI
+    // Using MIRI
     fn test_rc_mem_leak() {
         let rc = Rc::new(Box::new(10));
         assert_eq!(**rc, 10);

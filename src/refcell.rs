@@ -5,8 +5,10 @@ use crate::cell::Cell;
 
 /// `RefCell` allows for interior mutability through a shared reference with
 /// dynamic borrow-checking and ensures no other threads can have a reference to
-/// the same `RefCell` and the inner `T` is not mutably aliased at runtime.
+/// the same `RefCell` and the inner `T` is not mutably aliased.
 pub struct RefCell<T> {
+    // Only `safe` way in Rust to perform interior mutability through a shared
+    // reference.
     inner: UnsafeCell<T>,
     // Wrapped in `Cell` so updates can occur through a shared reference.
     references: Cell<isize>,
@@ -16,7 +18,7 @@ pub struct RefCell<T> {
 // impl<T> !Sync for RefCell<T> {}
 
 impl<T> RefCell<T> {
-    /// Sentinel value indicating mutable borrow.
+    /// Sentinel value indicating a mutable borrow is live.
     const MUTABLE_BORROW: isize = -1;
 
     pub fn new(value: T) -> Self {
@@ -99,7 +101,8 @@ impl<T> DerefMut for RefMut<'_, T> {
 
 impl<T> Drop for RefMut<'_, T> {
     fn drop(&mut self) {
-        // Since `RefMut` should be the only reference to the `RefCell`.
+        // Since `RefMut` should be the only reference to the `RefCell`, after
+        // dropping there should be no more references.
         self.parent.references.set(0);
     }
 }

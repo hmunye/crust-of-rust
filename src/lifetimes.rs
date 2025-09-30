@@ -5,9 +5,9 @@
 /// Need two distinct generic lifetimes so split values can have their lifetime
 /// tied to `remainder` rather than both fields.
 ///
-/// `Option` used to denote the remainder no longer has any contents to return.
-/// Otherwise, the final empty string would not be yielded if the `delimiter` is
-/// found as the last part of `remainder`.
+/// `Option` used to denote whether the remainder no longer has any contents to
+/// return. Otherwise, the final empty string would not be yielded if the
+/// `delimiter` is found as the last part of `remainder`.
 #[derive(Debug)]
 pub struct StrSplit<'a, 'b> {
     remainder: Option<&'a str>,
@@ -34,7 +34,7 @@ impl<'a, 'b> Iterator for StrSplit<'a, 'b> {
             Some(&remainder[..idx])
         } else {
             // Returns the contents of remainder, replacing it with None so the
-            // next call ends the iterator.
+            // next call correctly ends the iterator.
             self.remainder.take()
         }
     }

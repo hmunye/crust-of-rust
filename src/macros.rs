@@ -1,14 +1,14 @@
 //! Macros (declarative) provide a way to define code patterns and substitutions
 //! using pattern matching over input syntax (Rust syntax trees).
 //!
-//! The input must be valid Rust syntax but isn’t constrained further. The
-//! compiler decides if the resulting substitution forms valid Rust code.
+//! The input must be valid Rust syntax but isn’t constrained any further. The
+//! compiler then decides if the resulting substitution forms valid Rust code.
 //!
 //! Identifiers defined within macros are `hygienic`, meaning they don't
 //! interfere with the surrounding scope at the invocation site, and the
-//! surrounding scope doesn't interfere with them.
+//! surrounding scope doesn't interfere with the macro's scope.
 
-// Makes the macro available from the root of the crate.
+// Makes the macro public from the root of the crate.
 #[macro_export]
 macro_rules! vector {
     // Matches any pattern with no input tokens.
@@ -37,6 +37,8 @@ macro_rules! vector {
         let count = $count;
 
         let mut vec = ::std::vec::Vec::with_capacity(count);
+        // `std::iter::repeat` has a bound on `T` of `Clone`, so `$elem` is not
+        // evaluated repeatedly.
         vec.extend(::std::iter::repeat($elem).take(count));
         // Another valid option.
         // vec.resize(count, $elem);
@@ -49,9 +51,9 @@ macro_rules! vector {
 macro_rules! count {
     // Pattern counts the number of matched `$elem` expressions while avoiding
     // recursion that could lead to a stack overflow by constructing a flat
-    // array literal. Each `$elem` is replaced with the zero-sized type `()`.
-    // The count is obtained by taking the length of this array using `len`,
-    // which the compiler can evaluate at compile-time.
+    // array literal. Each `$elem` is replaced with the ZST `()`. The count is
+    // obtained by taking the length of this array using `len`, which the
+    // compiler can evaluate at compile-time.
     //
     // https://lukaswirth.dev/tlborm/decl-macros/building-blocks/counting.html
     (@COUNT, $($elem:expr)+) => {

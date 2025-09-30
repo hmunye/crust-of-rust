@@ -5,6 +5,8 @@ use std::cell::UnsafeCell;
 /// inner `T` is ever exposed.
 #[derive(Debug)]
 pub struct Cell<T> {
+    // Only `safe` way in Rust to perform interior mutability through a shared
+    // reference.
     value: UnsafeCell<T>,
 }
 
@@ -44,9 +46,7 @@ where
 ///
 /// fn require_sync<T: Sync>(_: T) {}
 ///
-/// fn main() {
-///     require_sync(&Cell::new(42));
-/// }
+/// require_sync(&Cell::new(42));
 /// ```
 fn assert_not_sync() {}
 

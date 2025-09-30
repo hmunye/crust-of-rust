@@ -2,7 +2,7 @@
 //! `Drop`, its generics arguments must strictly outlive it.
 //!
 //! The compiler needs to know when a value is dropped, whether it should
-//! consider it a use of any values contained within the type,
+//! consider it a use of any values contained within the type.
 //!
 //! Currently, the compiler conservatively forces all borrowed data in a value
 //! to strictly outlive that value.
@@ -12,12 +12,12 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
 // The compiler assumes conservatively that dropping a `Foo<T>` will use a `T`
-// if `Foo<T>` implements `Drop`, but using `#[may_dangle]` allows us to assert
-// `T` is not used when dropping `Foo<T>`.
+// if `Foo<T>` implements `Drop`, but using `#[may_dangle]` allows us to
+// unsafely assert `T` is not used when dropping `Foo<T>`.
 //
-// But that doesn't say anything about dropping a `T` though, so when invoking
-// the destructor, the compiler sees that `Foo` does not hold any `T`, only
-// a `*mut T` (which it cannot assume anything about).
+// But that doesn't say anything about dropping a `T`, so when invoking `Drop`,
+// the compiler sees that `Foo` does not hold any `T`, only a `*mut T`
+// (which it cannot assume anything about).
 pub struct Foo<T> {
     // ptr: *mut T,
     //
@@ -100,10 +100,13 @@ unsafe impl<#[may_dangle] T> Drop for Foo<T> {
 /// }
 ///
 /// let mut z = 42;
-/// // let b = Foo::new(Touch(&mut z));
-/// let b = Box::new(Touch(&mut z));
+/// let b = Foo::new(Touch(&mut z));
 /// println!("{}", z);
 /// ```
+///
+/// This should not compile because `Foo<T>` indicates to the compiler it will
+/// drop `T` which is counted as a use of `T`. `T` can be invalidated when
+/// dropping so it should no longer be used when constructing a `Foo<T>`.
 #[allow(dead_code)]
 fn dropck_valid() {}
 
@@ -114,6 +117,8 @@ fn dropck_valid() {}
 ///     x
 /// }
 /// ```
+///
+/// Should be covariant because of the `NonNull<T>`.
 #[allow(dead_code)]
 fn assert_properties() {}
 
