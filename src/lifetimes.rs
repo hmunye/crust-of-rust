@@ -1,6 +1,6 @@
 //! Lifetimes define regions of reference validity, spans of code where
 //! references must remain valid, as determined by the borrow checker through
-//! static analysis. This prevents dangling references and use-after-frees.
+//! static analysis, preventing dangling references and use-after-frees.
 
 /// Need two distinct generic lifetimes so split values can have their lifetime
 /// tied to `remainder` rather than both fields.

@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 #![feature(dropck_eyepatch)] // permanently unstable feature
 
+pub mod atomics;
 pub mod cell;
 pub mod channels;
 pub mod dropck;

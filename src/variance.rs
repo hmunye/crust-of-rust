@@ -18,7 +18,6 @@
 //!
 //! - `Contravariant`: A less useful type can be used in place of the type
 //!     - `fn(T) -> U`: Contravariant in `T`, covariant in `U`
-//! ```
 
 pub fn will_compile() {
     struct ValidMutStr<'a, 'b> {
