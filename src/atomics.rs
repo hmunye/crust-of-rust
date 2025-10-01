@@ -8,7 +8,7 @@
 //! updates it, give no guarantees that the reading thread will ever see any
 //! writes made by the writing thread.
 //!
-//! Rust atomics currently follow the rules of `C++20` atomics.
+//! Rust atomics currently follow the rules of [C++20 atomics].
 //!
 //! Operations on atomics are performed in a single step (e.g, `load`, `store`,
 //! `fetch_add`) to prevent other threads from accessing the value in between
@@ -20,6 +20,7 @@
 //! with the same memory location.
 //!
 //! [Ordering]: std::sync::atomic::Ordering
+//! [C++20 atomics]: https://en.cppreference.com/w/cpp/atomic/memory_order.html
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,7 +33,8 @@ pub struct Mutex<T> {
 // SAFETY: Access to the inner `UnsafeCell` is locked behind an `AtomicBool`.
 //
 // `T` needs to be `Send` because the lock can be acquired from multiple threads
-// and those threads might move the value.
+// and those threads might move the value. `T` does not have to be `Sync` since
+// a reference to the inner value `T` is never given out.
 unsafe impl<T: Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
@@ -48,29 +50,35 @@ impl<T> Mutex<T> {
 
     /*
     pub fn with_lock<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        // Spin-lock, looping until the lock is released (set to UNLOCKED).
+        // Spin-lock that loops until the lock is released (set to UNLOCKED).
         while self.lock.load(Ordering::Relaxed) != Self::UNLOCKED {
             std::hint::spin_loop()
         }
 
-        // Because we do the load and store in separate atomic operations, two
-        // threads may concurrently exit the spin-loop, both perform the store
-        // operation, and both enter the critical section, executing the closure
-        // on the same previous value of `v`, overwriting their updates made.
+        // This implementation is not thread-safe due to a race condition
+        // between the load and store operations.
         //
-        // These threads may be executing on separate cores or one core, but the
-        // same issue may occur. On a single core, the OS can preempt a thread
-        // at any point in it's execution, including between the load and store
-        // operations, preventing that thread from taking the lock and executing
-        // its closure with the current value.
+        // Because the load and store are separate atomic operations with no
+        // memory ordering guarantees, it's possible for multiple threads to:
+        //  - observe the lock as UNLOCKED
+        //  - exit the spin-loop simultaneously
+        //  - and then both store LOCKED
         //
-        // There is a race condition between the load and store.
+        // As a result, more than one thread may enter the critical section at
+        // the same time, violating mutual exclusion.
+        //
+        // This issue can occur whether the threads are on different cores or
+        // time-sliced on a single core (due to OS preemption). A thread may be
+        // interrupted between load and store, letting another thread acquire
+        // the lock improperly.
 
+        // Simulates preemption scenario.
         // std::thread::yield_now();
 
         self.lock.store(Self::LOCKED, Ordering::Relaxed);
 
-        // SAFETY: We hold the lock, therefore we can create a mutable ref.
+        // SAFETY: At this point, we believe we hold the lock, so we can safely
+        // create a mutable reference to the inner value.
         let ret = f(unsafe { &mut *self.v.get() });
 
         self.lock.store(Self::UNLOCKED, Ordering::Relaxed);
@@ -80,48 +88,54 @@ impl<T> Mutex<T> {
     */
 
     pub fn with_lock<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        // `compare_exchange` takes as arguments: what the current value should
-        // be for an exchange to occur, the value to exchange with the current
-        // value, and the memory orderings on success and fail. The method
-        // returns `Err(T)` if the value was not updated and `Ok(T)` if it was.
+        // Attempt to acquire the lock using an atomic compare-and-swap (CAS)
+        // operation. `compare_exchange_weak` takes four arguments:
         //
-        // The important difference here is that the operation is done in one
-        // atomic step. It isn't possible for any other thread to access the
-        // value in between this thread's read and write, like it was when using
-        // load and store as two separate atomic operations.
+        //   - The expected current value (`UNLOCKED`)
+        //   - The new value to write if the current value matches (`LOCKED`)
+        //   - The memory ordering to use on success (`Ordering::Acquire`)
+        //   - The memory ordering to use on failure (`Ordering::Relaxed`)
         //
-        // `compare_exchange_weak` performs the same `CAS` (compare-and-swap)
-        // operation as `compare_exchange`, but is allowed to fail spuriously.
-        // On an architecture like some `ARM` variants,
-        // (Load-Linked/Store-Conditional) pairs are used to implement a `CAS`
-        // but the `strex` (SC) instruction can fail if exclusive access to the
-        // cache-line is lost, even if the current value matches `current`.
-        // Using the `weak` implementation for loops avoids unnecessary
-        // contention on these platforms, while on `x86`, both versions compile
-        // to the same CPU instruction which cannot spuriously fail.
+        // It returns `Ok(previous_value)` if the value matched and was updated,
+        // and `Err(current_value)` otherwise.
         //
-        // `Ordering::Relaxed` only guarantees the operation will happen
-        // atomically and nothing else. An `Ordering::Acquire` load of a value
-        // stored using `Ordering::Release` or stronger must observe all
-        // operations that happen before that `Ordering::Release` store,
-        // essentially synchronizing with the most recent store of the value in
-        // modification order. The acquire/release pair form a happens-before
-        // relationship between the previous thread that stores to the value
-        // `lock` and the next thread that loads it.
+        // The important part is that this is done in one atomic
+        // read-modify-write (RMW) operation. No other thread can observe an
+        // intermediate state in between the load and store like it could with
+        // separate `load` and `store` operations.
+
+        // We use `compare_exchange_weak` instead of `compare_exchange` because
+        // `weak` is allowed to fail spuriously, not just if the current value
+        // doesn't match, but if, for example, exclusive access to the cache
+        // line is lost. This is common on some architectures like ARM, where
+        // CAS is implemented using a Load-Linked / Store-Conditional (LL/SC)
+        // pair (e.g., `ldrex/strex`). In those cases, the store (`strex`) can
+        // fail even when the value hasn't changed, simply because another core
+        // accessed the same cache line. Using `weak` in a loop avoids excessive
+        // cache-line contention and performs better in practice. On x86, both
+        // versions compile to the same instruction (`lock cmpxchg`) and behave
+        // identically, so it is mainly for portability.
+
+        // In this call, we use `Ordering::Acquire` on success. This ensures
+        // that all memory writes performed by another thread before it released
+        // the lock (with `Ordering::Release` or stronger) become observable to
+        // us. In other words, `Acquire` guarantees we see the "happens-before"
+        // timeline established by the previous release. But importantly, it
+        // does not guarantee we load the most recent value stored, just that
+        // the value we do observe comes with a consistent timeline of writes
+        // leading up to it. `Ordering::AcqRel` is not needed since the final
+        // `Ordering::Release` store of the lock is enough to synchronize with
+        // any other write, the store made by `compare_exchange_weak` does not
+        // also have to be synchronized and can be `Relaxed`.
         //
-        // A RMW (read-modify-write) operation performs both a load and store,
-        // so using `Ordering::Acquire` results in the load being
-        // `Ordering::Acquire` but the store being `Ordering::Relaxed`. Using
-        // `Ordering::AcqRel` ensures the load is `Ordering::Acquire` and the
-        // store is `Ordering::Release`. In this case it is unneeded since the
-        // `Ordering::Release` store and `Ordering::Acquire` load establish the
-        // happens-before relationship, so the critical section is left ordered.
-        // `Ordering::AcqRel` is more commonly used when performing a single
-        // modification operation.
+        // Each `Release` store can be thought of as capturing a timeline of
+        // prior writes. When an `Acquire` load reads one of those values, it
+        // synchronizes with that "timeline", even if it’s not the most recent
+        // store.
         //
-        // In this case, the fail ordering of `Ordering::Relaxed` is fine since
-        // we do not need the thread that failed to acquire the lock to
-        // synchronize with the last thread that released the lock.
+        // The failure ordering is `Relaxed`, which is sufficient because a
+        // failed CAS means we didn’t acquire the lock so no synchronization or
+        // observability guarantees are required in that case.
         while self
             .lock
             .compare_exchange_weak(
@@ -132,51 +146,82 @@ impl<T> Mutex<T> {
             )
             .is_err()
         {
-            // MESI protocol (cache coherence)
+            // If CAS fails, we avoid hammering the cache line with more RMW
+            // operations.
             //
-            // This optimization allows us to spin-loop on an operation that
-            // only requires a read on the memory location meaning it can be
-            // shared between threads/cores. This avoids the coordination that
-            // is required for something like `compare_exchange`, since that
-            // would need exclusive access to the cache line for a
-            // read-modify-write operation.
+            // CAS (compare_exchange) requires exclusive access to the cache
+            // line which means multiple threads attempting it simultaneously
+            // will contend for ownership, causing the MESI protocol to
+            // constantly bounce the line between cores (invalidating,
+            // upgrading, etc).
             //
-            // `Ordering::Relaxed` is fine here since we do not need to
-            // synchronize with any other threads because the lock is not
-            // acquired, just observed.
+            // Instead of repeatedly trying CAS, we spin using a relaxed `load`
+            // to check whether the lock is still held. Reads don’t require
+            // exclusive access meaning they can be shared between cores, so
+            // this is a much cheaper way to wait until the lock becomes
+            // available again.
+            //
+            // `Relaxed` ordering is fine here because we don’t need
+            // any synchronization guarantees, we’re just observing the lock
+            // state.
             while self.lock.load(Ordering::Relaxed) == Self::LOCKED {
                 std::hint::spin_loop()
             }
         }
 
-        // SAFETY: We hold the lock, therefore we can create a mutable ref.
+        // SAFETY: At this point, we believe we hold the lock, so we can safely
+        // create a mutable reference to the inner value.
         let ret = f(unsafe { &mut *self.v.get() });
 
-        // By using `Ordering::Release`, it guarantees that any load of `lock`
-        // using `Ordering::Acquire` or stronger must observe all previous
-        // operations that happen before the store (happens-before relationship)
-        // and that nothing can be ordered after the `Ordering::Release` store.
+        // After the closure finishes, we release the lock using
+        // `Ordering::Release`.
         //
-        // With `Ordering::Relaxed`, modifications made before the store may
-        // never be observed by other threads who acquire the lock.
+        // This ensures that all writes performed inside the critical section
+        // become observable to any thread that subsequently acquires the lock
+        // with `Ordering::Acquire` or stronger. With a weaker ordering, another
+        // thread might acquire the lock and not see the updates made here, even
+        // though they happened before the lock was released.
         self.lock.store(Self::UNLOCKED, Ordering::Release);
 
         ret
     }
 }
 
-// With this function, it is possible that `r1 == r2 == 42`. This is because
-// when multiple threads execute concurrently, there are essentially no
-// guarantees on what a specific thread reads that another thread wrote under
-// `Ordering::Relaxed`.
+// In this function, it’s possible that both `r1` and `r2` end up as 42. This
+// happens because `Ordering::Relaxed` provides no synchronization or ordering
+// guarantees between threads, only atomicity of individual operations.
 //
-// Typically for atomic operations, there is a modification order stored per
-// value. In this example, the modification order for `x` and `y` would be
-// (0 42). With `Ordering::Relaxed`, you can observe any value written by any
-// thread to that memory location. The load of `x` in `t2` is allowed to observe
-// any value stored to `x`. Because the load of `y` in `t1` is stored in `x`, 42
-// is now apart of x's modification set. Therefore any other thread loading `x`
-// under `Ordering::Relaxed` can observe the initialized value 0 or 42.
+// Each atomic variable maintains a modification order, which is a total order
+// of all writes to that variable. For example, `x`’s modification order might
+// be:
+//
+//   0 (initial) -> 42 (written by `t1`)
+//
+// Similarly for `y`.
+//
+// However, relaxed loads can observe any value from that variable’s
+// modification order, not necessarily the most recent. Because of this, the
+// load of `x` in thread `t2` can observe either the initial value 0 or the
+// updated value 42.
+//
+// In the program, `t1` loads `y` (initially 0), then stores that value into
+// `x`. Meanwhile, `t2` loads from `x` (which may or may not yet be updated) and
+// stores 42 into `y`. Due to the lack of synchronization, the stores and loads
+// can be observed in any order, making it possible for both threads to read the
+// value 42, even if the thread storing 42 has not executed yet.
+//
+// Essentially, the CPU (and the memory model) treats each atomic variable’s
+// modification order as the definitive sequence of all values that have been,
+// or could be, written to that memory location. This is more holistic than the
+// intuitive, linear way humans think, where we expect `t1` to complete its
+// write of 42 before `t2` can ever observe 42.
+//
+// With `Ordering::Relaxed`, this assumption breaks down. The value 42 is
+// considered part of `x`’s modification order once the store is initiated, even
+// if other threads haven’t yet observed it in program order. So, under a
+// `Relaxed` load on `x` by `t2` can legally observe `42` without any guarantee
+// that the write actually happened first in wall-clock time or in any global
+// order that the threads observe.
 #[allow(dead_code)]
 fn atomic_relaxed() {
     use std::sync::atomic::AtomicUsize;
@@ -203,7 +248,38 @@ fn atomic_relaxed() {
     println!("r1: {r1}, r2: {r2}");
 }
 
+// Possible values of `z` after both threads finish:
 //
+//  - 0?
+//    With just acquire/release ordering, 0 is possible because each thread's
+//    loads of `x` and `y` can legally observe values consistent with the
+//    happens-before relationship, but not necessarily synchronized globally.
+//
+//    For example, `t1` might see `x` as true (because of `_tx` storing it),
+//    but see `y` as false (if `_ty` hasn't completed or `t1` reads stale data),
+//    so it won't increment `z`. Similarly for `t2`. This lack of global
+//    ordering allows both to skip increments, leaving `z` at 0.
+//
+//  - 1?
+//    This can happen if one thread observes both flags as true, and the other
+//    thread does not. For instance, if `_tx` and `t1` run first and set `x` to
+//    true and `t1` observes `y` as false, but later `_ty` and `t2` run and see
+//    `y` as true but `x` as false, only one increment occurs.
+//
+//  - 2?
+//    Both threads observe `x` and `y` as true. This happens if `_tx` and `_ty`
+//    complete before `t1` and `t2` run, so both threads enter the critical
+//    sections and each increments `z` once.
+//
+//
+// When using `Ordering::SeqCst`, the behavior is stricter:
+//
+//  - 0 is not possible because sequential consistency enforces a single total
+//    order of all operations seen by all threads. If `t1` sees `x == true`
+//    and `y == true`, then any other thread observing `y == true` must also see
+//    `x == true` to maintain a consistent global order. This guarantees that if
+//    either thread observes both flags as true, the other must as well,
+//    preventing inconsistent partial observations.
 #[allow(dead_code)]
 fn atomic_sequentially_consistent() {
     use std::sync::atomic::AtomicUsize;
@@ -244,30 +320,6 @@ fn atomic_sequentially_consistent() {
     t1.join().unwrap();
     t2.join().unwrap();
 
-    // Possible values of `z`:
-    //  - 0?
-    //    Restrictions:
-    //      - t1 runs after _tx
-    //      - t2 runs after _ty
-    //
-    //    Yes because with acquire/release ordering, the acquire is synchronized
-    //    with the value loaded from `x` or `y`, which could be false or true
-    //    given their modification sets. `Ordering::Acquire` is allowed to
-    //    observe and value from that modification set when loaded subject to
-    //    the happens-before relationship.
-    //
-    //    With `Ordering::SeqCst`, 0 is no longer a possible value. Because a
-    //    thread, say `t1`, sees `x` as true and `y` as true, all other threads
-    //    must be consistent with that observation. When `t2` sees `y` as true,
-    //    `x` must be true to stay consistent. There must exist some ordering
-    //    that is consistent among all of the threads that observe under
-    //    `Ordering::SeqCst`.
-    //
-    //  - 1?
-    //    Yes with thread schedule (_tx, t1, _ty, t2)
-    //
-    //  - 2?
-    //    Yes with thread schedule (_tx, _ty, t1, t2)
     let _z = z.load(Ordering::SeqCst);
 }
 
