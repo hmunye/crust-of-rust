@@ -7,10 +7,10 @@ use crate::cell::Cell;
 /// dynamic borrow-checking and ensures no other threads can have a reference to
 /// the same `RefCell` and the inner `T` is not mutably aliased.
 pub struct RefCell<T> {
-    // Only `safe` way in Rust to perform interior mutability through a shared
-    // reference.
+    /// Only `safe` way in Rust to perform interior mutability through a shared
+    /// reference.
     inner: UnsafeCell<T>,
-    // Wrapped in `Cell` so updates can occur through a shared reference.
+    /// Wrapped in `Cell` so updates can occur through a shared reference.
     references: Cell<isize>,
 }
 

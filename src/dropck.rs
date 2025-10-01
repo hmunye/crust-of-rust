@@ -11,21 +11,20 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
-// The compiler assumes conservatively that dropping a `Foo<T>` will use a `T`
-// if `Foo<T>` implements `Drop`, but using `#[may_dangle]` allows us to
-// unsafely assert `T` is not used when dropping `Foo<T>`.
-//
-// But that doesn't say anything about dropping a `T`, so when invoking `Drop`,
-// the compiler sees that `Foo` does not hold any `T`, only a `*mut T`
-// (which it cannot assume anything about).
+/// The compiler assumes conservatively that dropping a `Foo<T>` will use a `T`
+/// if `Foo<T>` implements `Drop`, but using `#[may_dangle]` allows us to
+/// unsafely assert `T` is not used when dropping `Foo<T>`.
+///
+/// But that doesn't say anything about dropping a `T`, so when invoking `Drop`,
+/// the compiler sees that `Foo` does not hold any `T`, only a `*mut T`
+/// (which it cannot assume anything about).
 pub struct Foo<T> {
     // ptr: *mut T,
-    //
-    // `NonNull` used instead because it is covariant in `T` while providing
-    // mutability, and supports niche-optimization.
+    /// `NonNull` used instead because it is covariant in `T` while providing
+    /// mutability, and supports niche-optimization.
     inner: NonNull<T>,
-    // Using a `PhantomData<T>` tells the compiler we logically own `T` and will
-    // drop it.
+    /// Using a `PhantomData<T>` tells the compiler we logically own `T` and
+    /// will drop it.
     _marker: PhantomData<T>,
 }
 
@@ -107,7 +106,6 @@ unsafe impl<#[may_dangle] T> Drop for Foo<T> {
 /// This should not compile because `Foo<T>` indicates to the compiler it will
 /// drop `T` which is counted as a use of `T`. `T` can be invalidated when
 /// dropping so it should no longer be used when constructing a `Foo<T>`.
-#[allow(dead_code)]
 fn dropck_valid() {}
 
 /// ```
@@ -119,7 +117,6 @@ fn dropck_valid() {}
 /// ```
 ///
 /// Should be covariant because of the `NonNull<T>`.
-#[allow(dead_code)]
 fn assert_properties() {}
 
 #[cfg(test)]

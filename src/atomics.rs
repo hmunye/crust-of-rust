@@ -187,43 +187,42 @@ impl<T> Mutex<T> {
     }
 }
 
-// In this function, it’s possible that both `r1` and `r2` end up as 42. This
-// happens because `Ordering::Relaxed` provides no synchronization or ordering
-// guarantees between threads, only atomicity of individual operations.
-//
-// Each atomic variable maintains a modification order, which is a total order
-// of all writes to that variable. For example, `x`’s modification order might
-// be:
-//
-//   0 (initial) -> 42 (written by `t1`)
-//
-// Similarly for `y`.
-//
-// However, relaxed loads can observe any value from that variable’s
-// modification order, not necessarily the most recent. Because of this, the
-// load of `x` in thread `t2` can observe either the initial value 0 or the
-// updated value 42.
-//
-// In the program, `t1` loads `y` (initially 0), then stores that value into
-// `x`. Meanwhile, `t2` loads from `x` (which may or may not yet be updated) and
-// stores 42 into `y`. Due to the lack of synchronization, the stores and loads
-// can be observed in any order, making it possible for both threads to read the
-// value 42, even if the thread storing 42 has not executed yet.
-//
-// Essentially, the CPU (and the memory model) treats each atomic variable’s
-// modification order as the definitive sequence of all values that have been,
-// or could be, written to that memory location. This is more holistic than the
-// intuitive, linear way humans think, where we expect `t1` to complete its
-// write of 42 before `t2` can ever observe 42.
-//
-// With `Ordering::Relaxed`, this assumption breaks down. The value 42 is
-// considered part of `x`’s modification order once the store is initiated, even
-// if other threads haven’t yet observed it in program order. So, under a
-// `Relaxed` load on `x` by `t2` can legally observe `42` without any guarantee
-// that the write actually happened first in wall-clock time or in any global
-// order that the threads observe.
-#[allow(dead_code)]
-fn atomic_relaxed() {
+/// In this function, it’s possible that both `r1` and `r2` end up as 42. This
+/// happens because `Ordering::Relaxed` provides no synchronization or ordering
+/// guarantees between threads, only atomicity of individual operations.
+///
+/// Each atomic variable maintains a modification order, which is a total order
+/// of all writes to that variable. For example, `x`’s modification order might
+/// be:
+///
+///   0 (initial) -> 42 (written by `t1`)
+///
+/// Similarly for `y`.
+///
+/// However, relaxed loads can observe any value from that variable’s
+/// modification order, not necessarily the most recent. Because of this, the
+/// load of `x` in thread `t2` can observe either the initial value 0 or the
+/// updated value 42.
+///
+/// In the program, `t1` loads `y` (initially 0), then stores that value into
+/// `x`. Meanwhile, `t2` loads from `x` (which may or may not yet be updated)
+/// and stores 42 into `y`. Due to the lack of synchronization, the stores and
+/// loads can be observed in any order, making it possible for both threads to
+/// read the value 42, even if the thread storing 42 has not executed yet.
+///
+/// Essentially, the CPU (and the memory model) treats each atomic variable’s
+/// modification order as the definitive sequence of all values that have been,
+/// or could be, written to that memory location. This is more holistic than the
+/// intuitive, linear way humans think, where we expect `t1` to complete its
+/// write of 42 before `t2` can ever observe 42.
+///
+/// With `Ordering::Relaxed`, this assumption breaks down. The value 42 is
+/// considered part of `x`’s modification order once the store is initiated,
+/// even if other threads haven’t yet observed it in program order. So, under a
+/// `Relaxed` load on `x` by `t2` can legally observe `42` without any guarantee
+/// that the write actually happened first in wall-clock time or in any global
+/// order that the threads observe.
+pub fn atomic_relaxed() {
     use std::sync::atomic::AtomicUsize;
     use std::thread;
 
@@ -248,40 +247,39 @@ fn atomic_relaxed() {
     println!("r1: {r1}, r2: {r2}");
 }
 
-// Possible values of `z` after both threads finish:
-//
-//  - 0?
-//    With just acquire/release ordering, 0 is possible because each thread's
-//    loads of `x` and `y` can legally observe values consistent with the
-//    happens-before relationship, but not necessarily synchronized globally.
-//
-//    For example, `t1` might see `x` as true (because of `_tx` storing it),
-//    but see `y` as false (if `_ty` hasn't completed or `t1` reads stale data),
-//    so it won't increment `z`. Similarly for `t2`. This lack of global
-//    ordering allows both to skip increments, leaving `z` at 0.
-//
-//  - 1?
-//    This can happen if one thread observes both flags as true, and the other
-//    thread does not. For instance, if `_tx` and `t1` run first and set `x` to
-//    true and `t1` observes `y` as false, but later `_ty` and `t2` run and see
-//    `y` as true but `x` as false, only one increment occurs.
-//
-//  - 2?
-//    Both threads observe `x` and `y` as true. This happens if `_tx` and `_ty`
-//    complete before `t1` and `t2` run, so both threads enter the critical
-//    sections and each increments `z` once.
-//
-//
-// When using `Ordering::SeqCst`, the behavior is stricter:
-//
-//  - 0 is not possible because sequential consistency enforces a single total
-//    order of all operations seen by all threads. If `t1` sees `x == true`
-//    and `y == true`, then any other thread observing `y == true` must also see
-//    `x == true` to maintain a consistent global order. This guarantees that if
-//    either thread observes both flags as true, the other must as well,
-//    preventing inconsistent partial observations.
-#[allow(dead_code)]
-fn atomic_sequentially_consistent() {
+/// Possible values of `z` after both threads finish:
+///
+///  - 0?
+///    With just acquire/release ordering, 0 is possible because each thread's
+///    loads of `x` and `y` can legally observe values consistent with the
+///    happens-before relationship, but not necessarily synchronized globally.
+///
+///    For example, `t1` might see `x` as true (because of `_tx` storing it),
+///    but see `y` as false (if `_ty` hasn't completed or `t1` reads stale data),
+///    so it won't increment `z`. Similarly for `t2`. This lack of global
+///    ordering allows both to skip increments, leaving `z` at 0.
+///
+///  - 1?
+///    This can happen if one thread observes both flags as true, and the other
+///    thread does not. For instance, if `_tx` and `t1` run first and set `x` to
+///    true and `t1` observes `y` as false, but later `_ty` and `t2` run and see
+///    `y` as true but `x` as false, only one increment occurs.
+///
+///  - 2?
+///    Both threads observe `x` and `y` as true. This happens if `_tx` and `_ty`
+///    complete before `t1` and `t2` run, so both threads enter the critical
+///    sections and each increments `z` once.
+///
+///
+/// When using `Ordering::SeqCst`, the behavior is stricter:
+///
+///  - 0 is not possible because sequential consistency enforces a single total
+///    order of all operations seen by all threads. If `t1` sees `x == true`
+///    and `y == true`, then any other thread observing `y == true` must also
+///    see `x == true` to maintain a consistent global order. This guarantees
+///    that if either thread observes both flags as true, the other must as well,
+///    preventing inconsistent partial observations.
+pub fn atomic_sequentially_consistent() {
     use std::sync::atomic::AtomicUsize;
     use std::thread;
 

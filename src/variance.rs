@@ -86,13 +86,13 @@ pub fn wont_compile() {
     println!("{x}")
 }
 
-// Two distinct generic lifetimes are needed here so the mutable borrow's
-// lifetime is not tied to the lifetime of `s`. With this approach, the mutable
-// borrow can be shortened instead of lasting as long as `s`, which is invariant
-// in `'a str`.
-//
-// The mutable reference's lifetime is elided, and the compiler will
-// automatically give it a distinct lifetime when analyzing.
+/// Two distinct generic lifetimes are needed here so the mutable borrow's
+/// lifetime is not tied to the lifetime of `s`. With this approach, the mutable
+/// borrow can be shortened instead of lasting as long as `s`, which is invariant
+/// in `'a str`.
+///
+/// The mutable reference's lifetime is elided, and the compiler will
+/// automatically give it a distinct lifetime when analyzing.
 pub fn strtok<'a>(s: &'_ mut &'a str, delim: char) -> &'a str {
     if let Some(i) = s.find(delim) {
         let prefix = &s[..i];

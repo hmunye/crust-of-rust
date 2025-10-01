@@ -8,12 +8,12 @@ use crate::cell::Cell;
 /// references to a value.
 #[derive(Debug)]
 pub struct Rc<T> {
-    // Needs to be heap-allocated since it can be referenced from multiple
-    // regions of code.
+    /// Needs to be heap-allocated since it can be referenced from multiple
+    /// regions of code.
     inner: NonNull<RcInner<T>>,
-    // Need to indicate to the compiler that we logically own `T`, since there
-    // is only a pointer to `T`, which is non-owning. Indicates to `dropck` that
-    // `Rc<T>` with drop a `T` when dropping.
+    /// Need to indicate to the compiler that we logically own `T`, since there
+    /// is only a pointer to `T`, which is non-owning. Indicates to `dropck`
+    /// that `Rc<T>` with drop a `T` when dropping.
     _marker: PhantomData<RcInner<T>>,
 }
 
@@ -30,11 +30,11 @@ pub struct Rc<T> {
 // impl<T> !Send for Rc<T> {}
 // impl<T> !Sync for Rc<T> {}
 
-// `RcInner` enables the reference count to also be shared between cloned Rc's.
+/// Enables the reference count to also be shared between cloned Rc's.
 #[derive(Debug)]
 struct RcInner<T> {
     value: T,
-    // So it can be updated through a shared reference.
+    /// So it can be updated through a shared reference.
     ref_count: Cell<usize>,
 }
 

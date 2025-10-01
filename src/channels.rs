@@ -41,15 +41,15 @@ impl std::fmt::Display for RecvError {
 }
 
 struct Inner<T> {
-    // So we can have FIFO communication over the channel.
+    /// So we can have FIFO communication over the channel.
     queue: VecDeque<T>,
-    // So we can determine if the channel is closed.
-    //
-    // `Arc::strong_count` could be used instead to determine if the channel
-    // is closed (1 means only the receiver hasn't been dropped), but it
-    // doesn't differentiate between `Sender` and `Receiver` meaning we
-    // could not potentially notify any blocked `recv` when dropping the last
-    // `Sender`.
+    /// So we can determine if the channel is closed.
+    ///
+    /// `Arc::strong_count` could be used instead to determine if the channel
+    /// is closed (1 means only the receiver hasn't been dropped), but it
+    /// doesn't differentiate between `Sender` and `Receiver` meaning we
+    /// could not potentially notify any blocked `recv` when dropping the last
+    /// `Sender`.
     senders: usize,
 }
 
@@ -58,10 +58,10 @@ struct Shared<T> {
     avail: Condvar,
 }
 
-// Sender type of a channel.
+/// Sender type of a channel.
 pub struct Sender<T> {
-    // `Arc` is used so the `Sender` can share the same instance of `ChanInner`
-    // with all senders and the receiver.
+    /// `Arc` is used so the `Sender` can share the same instance of `ChanInner`
+    /// with all senders and the receiver.
     inner: Arc<Shared<T>>,
 }
 
@@ -108,14 +108,14 @@ impl<T> Sender<T> {
     }
 }
 
-// Receiver type of a channel.
+/// Receiver type of a channel.
 pub struct Receiver<T> {
-    // `Arc` is used so the `Receiver` can share the same instance of
-    // `ChanInner` with all senders.
+    /// `Arc` is used so the `Receiver` can share the same instance of
+    /// `ChanInner` with all senders.
     inner: Arc<Shared<T>>,
-    // Since out implementation uses only one `Receiver`, we can keep a local
-    // buffer of all sent items to reduce the number of times we lock to access
-    // the shared queue.
+    /// Since out implementation uses only one `Receiver`, we can keep a local
+    /// buffer of all sent items to reduce the number of times we lock to access
+    /// the shared queue.
     buf: VecDeque<T>,
 }
 

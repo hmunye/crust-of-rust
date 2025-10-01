@@ -5,8 +5,8 @@ use std::cell::UnsafeCell;
 /// inner `T` is ever exposed.
 #[derive(Debug)]
 pub struct Cell<T> {
-    // Only `safe` way in Rust to perform interior mutability through a shared
-    // reference.
+    /// Only `safe` way in Rust to perform interior mutability through a shared
+    /// reference.
     value: UnsafeCell<T>,
 }
 
