@@ -25,7 +25,8 @@ fn foo1() -> impl Future<Output = usize> {
     // by printing "foo" to `stdout`. It then reaches `foo().await`, at which
     // point execution is suspended until that Future resolves.
     //
-    // The `.await` expression can be loosely desugared to something like:
+    // The `.await` expression can be hypothetically desugared to something
+    // like:
     //
     // ```
     // let mut fut = foo();
@@ -36,7 +37,7 @@ fn foo1() -> impl Future<Output = usize> {
     //             Poll::Pending => yield,
     //         }
     //     },
-    // }
+    // };
     // ```
     //
     // `.await` essentially polls the inner Future in a loop until it returns
@@ -57,9 +58,9 @@ fn foo1() -> impl Future<Output = usize> {
     // `Pin` here ensures that the memory location of the Future
     // (the `async` block's state machine) is guaranteed not to move in memory.
     // This is essential because the compiler generated state-machine may
-    // potentially including self-references and if it were ever moved in memory
-    // after beginning execution, any self-referential pointers it holds could
-    // become invalid and dangling.
+    // potentially include self-references and if it were ever moved in memory
+    // after beginning executed, any self-referential pointers it holds could
+    // become invalid and dangle.
     //
     // `Pin<T>` enforces this immovability. It tells the compiler that `T` must
     // not be moved once pinned, unless it implements the `Unpin` auto trait.
@@ -84,7 +85,7 @@ fn foo1() -> impl Future<Output = usize> {
 }
 
 async fn bar() {
-    // `x` is not a `usize`, it’s a `Future` that will eventually yield a
+    // `x` here is not a `usize`, but a `Future` that will eventually yield a
     // `usize` when awaited. Specifically, it has the type:
     //
     //      impl Future<Output = usize>
@@ -92,7 +93,7 @@ async fn bar() {
     // Unlike JavaScript `Promises`, Futures are lazy: they do not execute
     // eagerly. Instead, they behave more like iterators, they only make
     // progress when explicitly polled. The `println` in `foo()` will also not
-    // execute until the Future is actually polled.
+    // execute until the Future is actually awaited.
     //
     // Futures essentially describe a series of instructions that will be
     // executed at some point in the program execution.
