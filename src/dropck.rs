@@ -105,7 +105,7 @@ unsafe impl<#[may_dangle] T> Drop for Foo<T> {
 ///
 /// This should not compile because `Foo<T>` indicates to the compiler it will
 /// drop `T` which is counted as a use of `T`. `T` can be invalidated when
-/// dropping so it should no longer be used when constructing a `Foo<T>`.
+/// dropping so it should no longer be used when dropping a `Foo<T>`.
 fn dropck_valid() {}
 
 /// ```
